@@ -28,6 +28,25 @@ async function run() {
   try {
     // Connect the client to the server	(optional starting in v4.7)
     await client.connect();
+
+    // Get the collection
+    const artifactCollections = client
+      .db("historical-artifacts")
+      .collection("artifacts_collection");
+
+    app.post("/artifacts-info", async (req, res) => {
+      try {
+        const artifactsInfo = req.body;
+        const result = await artifactCollections.insertOne(artifactsInfo);
+        res.status(201).send(result);
+      } catch (err) {
+        console.error("Error inserting artifacts info:", err);
+        res
+          .status(500)
+          .send({ error: "Failed to insert artifacts information" });
+      }
+    });
+
     // Send a ping to confirm a successful connection
     await client.db("admin").command({ ping: 1 });
     console.log(
