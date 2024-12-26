@@ -1,10 +1,10 @@
 const express = require("express");
 const cors = require("cors");
 const dotenv = require("dotenv"); // Corrected from "dotnv" to "dotenv"
-const { MongoClient, ServerApiVersion } = require("mongodb");
+const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 const app = express();
 dotenv.config();
-const port = process.env.PORT || 4000;
+const port = process.env.PORT || 5000;
 
 // Middleware
 app.use(express.json());
@@ -33,6 +33,52 @@ async function run() {
     const artifactCollections = client
       .db("historical-artifacts")
       .collection("artifacts_collection");
+
+    app.patch("/artifacts_collection/:id/like", async (req, res) => {
+      try {
+        const id = req.params.id; // Get the artifact ID from the URL
+        const query = { _id: new ObjectId(id) }; // Convert the ID to ObjectId
+
+        // Increment the like count by 1
+        const update = { $inc: { likeCount: 1 } }; // MongoDB operator to increment
+        const options = { returnDocument: "after" }; // Return the updated document
+
+        const result = await artifactCollections.findOneAndUpdate(
+          query,
+          update,
+          options
+        );
+
+        console.log("result", result);
+
+        if (result) {
+          res.send({ likeCount: result.likeCount }); // Send the updated artifact back
+        } else {
+          res.status(404).send({ error: "Artifact not found" }); // If not found
+        }
+      } catch (err) {
+        console.error("Error updating like count:", err);
+        // res.status(500).send({ error: "Failed to update like count" }); // Handle server errors
+      }
+    });
+
+    // GET route to fetch a specific visa by ID
+    app.get("/artifacts_collection/:id", async (req, res) => {
+      try {
+        const id = req.params.id; // Get the ID from the URL
+        const query = { _id: new ObjectId(id) }; // Correctly convert the ID to ObjectId
+        const result = await artifactCollections.findOne(query);
+        res.send(result); // Send the result
+      } catch (err) {
+        console.error("Error fetching artifact by ID:", err);
+        res.status(500).send({ error: "Failed to fetch artifact information" });
+      }
+    });
+
+    app.get("/artifacts_collection", async (req, res) => {
+      const result = await artifactCollections.find().toArray(); // Fetch all jobs
+      res.send(result); // Send result with status code 200 (OK)
+    });
 
     app.post("/artifacts-info", async (req, res) => {
       try {
