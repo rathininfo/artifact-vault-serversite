@@ -34,6 +34,10 @@ async function run() {
       .db("historical-artifacts")
       .collection("artifacts_collection");
 
+    const userAddedArtifacts = client
+      .db("historical-artifacts")
+      .collection("added-artifacts");
+
     app.patch("/artifacts_collection/:id/like", async (req, res) => {
       try {
         const id = req.params.id; // Get the artifact ID from the URL
@@ -52,7 +56,7 @@ async function run() {
         console.log("result", result);
 
         if (result) {
-          res.send({ likeCount: result.likeCount }); // Send the updated artifact back
+          res.send({ likeCount: result }); // Send the updated artifact back
         } else {
           res.status(404).send({ error: "Artifact not found" }); // If not found
         }
@@ -80,10 +84,17 @@ async function run() {
       res.send(result); // Send result with status code 200 (OK)
     });
 
+    app.get("/added_artifacts_collection", async (req, res) => {
+      const email = req.query.email;
+      const query = { addedByEmail: email };
+      const result = await userAddedArtifacts.find(query).toArray(); // Fetch all jobs
+      res.send(result); // Send result with status code 200 (OK)
+    });
+
     app.post("/artifacts-info", async (req, res) => {
       try {
         const artifactsInfo = req.body;
-        const result = await artifactCollections.insertOne(artifactsInfo);
+        const result = await userAddedArtifacts.insertOne(artifactsInfo);
         res.status(201).send(result);
       } catch (err) {
         console.error("Error inserting artifacts info:", err);
