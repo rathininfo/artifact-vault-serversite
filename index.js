@@ -1,21 +1,20 @@
 const express = require("express");
 const cors = require("cors");
-const dotenv = require("dotenv"); // Corrected from "dotnv" to "dotenv"
+const dotenv = require("dotenv");
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
-const app = express();
+
 dotenv.config();
+
+const app = express();
 const port = process.env.PORT || 5000;
 
 // Middleware
 app.use(express.json());
 app.use(cors());
 
-// rathininfo7;
-// hpngBFYgzrgRslcB;
+// MongoDB Connection URI
+const uri = `mongodb+srv://${process.env.USER_NAME}:${process.env.PASSWORD}@cluster1.mynmq.mongodb.net/?retryWrites=true&w=majority`;
 
-const uri = `mongodb+srv://${process.env.USER_NAME}:${process.env.PASSWORD}@cluster1.mynmq.mongodb.net/?retryWrites=true&w=majority&appName=Cluster1`;
-
-// Create a MongoClient with a MongoClientOptions object to set the Stable API version
 const client = new MongoClient(uri, {
   serverApi: {
     version: ServerApiVersion.v1,
@@ -26,26 +25,25 @@ const client = new MongoClient(uri, {
 
 async function run() {
   try {
-    // Connect the client to the server	(optional starting in v4.7)
     await client.connect();
+    console.log("Connected to MongoDB!");
 
-    // Get the collection
+    // Collections
     const artifactCollections = client
       .db("historical-artifacts")
       .collection("artifacts_collection");
-
     const userAddedArtifacts = client
       .db("historical-artifacts")
       .collection("added-artifacts");
 
+    // Increment Like Count
     app.patch("/artifacts_collection/:id/like", async (req, res) => {
       try {
-        const id = req.params.id; // Get the artifact ID from the URL
-        const query = { _id: new ObjectId(id) }; // Convert the ID to ObjectId
+        const id = req.params.id;
+        const query = { _id: new ObjectId(id) };
 
-        // Increment the like count by 1
-        const update = { $inc: { likeCount: 1 } }; // MongoDB operator to increment
-        const options = { returnDocument: "after" }; // Return the updated document
+        const update = { $inc: { likeCount: 1 } };
+        const options = { returnDocument: "after" };
 
         const result = await artifactCollections.findOneAndUpdate(
           query,
@@ -53,75 +51,149 @@ async function run() {
           options
         );
 
-        console.log("result", result);
-
         if (result) {
-          res.send({ likeCount: result }); // Send the updated artifact back
+          res.status(200).send({ likeCount: result.likeCount });
         } else {
-          res.status(404).send({ error: "Artifact not found" }); // If not found
+          res.status(404).send({ error: "Artifact not found" });
         }
       } catch (err) {
         console.error("Error updating like count:", err);
-        // res.status(500).send({ error: "Failed to update like count" }); // Handle server errors
+        res.status(500).send({ error: "Failed to update like count" });
       }
     });
 
-    // GET route to fetch a specific visa by ID
+    // Fetch Single Artifact by ID
     app.get("/artifacts_collection/:id", async (req, res) => {
       try {
-        const id = req.params.id; // Get the ID from the URL
-        const query = { _id: new ObjectId(id) }; // Correctly convert the ID to ObjectId
+        const id = req.params.id;
+        const query = { _id: new ObjectId(id) };
         const result = await artifactCollections.findOne(query);
-        res.send(result); // Send the result
+
+        if (result) {
+          res.status(200).send(result);
+        } else {
+          res.status(404).send({ error: "Artifact not found" });
+        }
       } catch (err) {
         console.error("Error fetching artifact by ID:", err);
-        res.status(500).send({ error: "Failed to fetch artifact information" });
+        res.status(500).send({ error: "Failed to fetch artifact" });
       }
     });
 
+    // Fetch All Artifacts
     app.get("/artifacts_collection", async (req, res) => {
-      const result = await artifactCollections.find().toArray(); // Fetch all jobs
-      res.send(result); // Send result with status code 200 (OK)
+      try {
+        const result = await artifactCollections.find().toArray();
+        res.status(200).send(result);
+      } catch (err) {
+        console.error("Error fetching artifacts:", err);
+        res.status(500).send({ error: "Failed to fetch artifacts" });
+      }
     });
 
+    // Fetch All added Artifacts specific id
+    app.get("/user-addded-artifacts/:id", async (req, res) => {
+      try {
+        const id = req.params.id;
+        const query = { _id: new ObjectId(id) };
+        const result = await userAddedArtifacts.findOne(query);
+
+        if (result) {
+          res.status(200).send(result);
+        } else {
+          res.status(404).send({ error: "Artifact not found" });
+        }
+      } catch (err) {
+        console.error("Error fetching artifact by ID:", err);
+        res.status(500).send({ error: "Failed to fetch artifact" });
+      }
+    });
+
+    // Fetch All added Artifacts
+    app.get("/user-addded-artifacts", async (req, res) => {
+      try {
+        const result = await userAddedArtifacts.find().toArray();
+        res.status(200).send(result);
+      } catch (err) {
+        console.error("Error fetching artifacts:", err);
+        res.status(500).send({ error: "Failed to fetch artifacts" });
+      }
+    });
+
+    // Fetch Artifacts Added by User (by email)
     app.get("/added_artifacts_collection", async (req, res) => {
-      const email = req.query.email;
-      const query = { addedByEmail: email };
-      const result = await userAddedArtifacts.find(query).toArray(); // Fetch all jobs
-      res.send(result); // Send result with status code 200 (OK)
+      try {
+        const email = req.query.email;
+        const query = { addedByEmail: email };
+        const result = await userAddedArtifacts.find(query).toArray();
+
+        if (result.length > 0) {
+          res.status(200).send(result);
+        } else {
+          res.status(404).send({ error: "No artifacts found for this user" });
+        }
+      } catch (err) {
+        console.error("Error fetching user artifacts:", err);
+        res.status(500).send({ error: "Failed to fetch user artifacts" });
+      }
     });
 
+    // Add a New Artifact
     app.post("/artifacts-info", async (req, res) => {
       try {
         const artifactsInfo = req.body;
         const result = await userAddedArtifacts.insertOne(artifactsInfo);
+
         res.status(201).send(result);
       } catch (err) {
-        console.error("Error inserting artifacts info:", err);
-        res
-          .status(500)
-          .send({ error: "Failed to insert artifacts information" });
+        console.error("Error inserting artifact:", err);
+        res.status(500).send({ error: "Failed to add artifact" });
       }
     });
 
-    // Send a ping to confirm a successful connection
+    // Update Artifact Information
+    app.put("/update_artifact/:id", async (req, res) => {
+      try {
+        const id = req.params.id;
+        const updatedArtifact = req.body;
+
+        // Ensure fields like likeCount and addedByEmail are not updated
+        delete updatedArtifact.likeCount;
+        delete updatedArtifact.addedByEmail;
+
+        const filter = { _id: new ObjectId(id) };
+        const updateDoc = { $set: updatedArtifact };
+
+        const result = await userAddedArtifacts.updateOne(filter, updateDoc);
+
+        if (result.modifiedCount === 1) {
+          res.status(200).send({ message: "Artifact updated successfully" });
+        } else {
+          res
+            .status(404)
+            .send({ error: "Artifact not found or no changes made" });
+        }
+      } catch (err) {
+        console.error("Error updating artifact:", err);
+        res.status(500).send({ error: "Failed to update artifact" });
+      }
+    });
+
+    // Test MongoDB Connection
     await client.db("admin").command({ ping: 1 });
-    console.log(
-      "Pinged your deployment. You successfully connected to MongoDB!"
-    );
-  } finally {
-    // Ensures that the client will close when you finish/error
-    // await client.close();
+    console.log("Pinged MongoDB successfully!");
+  } catch (err) {
+    console.error("Failed to connect to MongoDB", err);
   }
 }
 run().catch(console.dir);
 
-// Test Route
+// Root Route
 app.get("/", (req, res) => {
-  res.send("Server Is connected");
+  res.send("Server is connected and running!");
 });
 
 // Start Server
 app.listen(port, () => {
-  console.log(`The Server is running on port ${port}`);
+  console.log(`Server is running on port ${port}`);
 });
