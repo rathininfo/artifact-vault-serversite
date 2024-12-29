@@ -40,25 +40,74 @@ async function run() {
     app.patch("/artifacts_collection/:id/like", async (req, res) => {
       try {
         const id = req.params.id;
-        const query = { _id: new ObjectId(id) };
+        const { userId } = req.body;
 
+        const artifactQuery = { _id: new ObjectId(id) };
         const update = { $inc: { likeCount: 1 } };
-        const options = { returnDocument: "after" };
 
-        const result = await artifactCollections.findOneAndUpdate(
-          query,
-          update,
-          options
+        // Update like count in the artifacts collection
+        const artifactUpdateResult = await artifactCollections.updateOne(
+          artifactQuery,
+          update
         );
 
-        if (result) {
-          res.status(200).send({ likeCount: result.likeCount });
-        } else {
-          res.status(404).send({ error: "Artifact not found" });
+        if (artifactUpdateResult.matchedCount === 0) {
+          return res.status(404).send({ error: "Artifact not found" });
         }
+
+        // Save user's like in a separate collection
+        const likeData = {
+          userId,
+          artifactId: id,
+          likedAt: new Date(),
+        };
+
+        const userLikesCollection = client
+          .db("historical-artifacts")
+          .collection("user_likes");
+        await userLikesCollection.updateOne(
+          { userId, artifactId: id },
+          { $set: likeData },
+          { upsert: true }
+        );
+
+        res.status(200).send({ message: "Artifact liked successfully!" });
       } catch (err) {
-        console.error("Error updating like count:", err);
-        res.status(500).send({ error: "Failed to update like count" });
+        console.error("Error liking artifact:", err);
+        res.status(500).send({ error: "Failed to like artifact" });
+      }
+    });
+
+    app.get("/user-likes/:userId", async (req, res) => {
+      try {
+        const { userId } = req.params;
+
+        // Fetch liked artifacts from the user_likes collection
+        const userLikesCollection = client
+          .db("historical-artifacts")
+          .collection("user_likes");
+
+        const likedArtifacts = await userLikesCollection
+          .find({ userId })
+          .toArray();
+
+        if (likedArtifacts.length === 0) {
+          return res.status(404).send({ message: "No liked artifacts yet." });
+        }
+
+        const artifactIds = likedArtifacts.map(
+          (like) => new ObjectId(like.artifactId)
+        );
+
+        // Fetch full artifact details
+        const artifacts = await artifactCollections
+          .find({ _id: { $in: artifactIds } })
+          .toArray();
+
+        res.status(200).send(artifacts);
+      } catch (err) {
+        console.error("Error fetching liked artifacts:", err);
+        res.status(500).send({ error: "Failed to fetch liked artifacts" });
       }
     });
 
@@ -152,30 +201,52 @@ async function run() {
     });
 
     // Update Artifact Information
-    app.put("/update_artifact/:id", async (req, res) => {
+    app.put("/user-added-artifacts/:id", async (req, res) => {
       try {
         const id = req.params.id;
+
+        // Validate the ObjectId
+        if (!ObjectId.isValid(id)) {
+          return res.status(400).send({ error: "Invalid ObjectId format" });
+        }
+
         const updatedArtifact = req.body;
 
-        // Ensure fields like likeCount and addedByEmail are not updated
-        delete updatedArtifact.likeCount;
-        delete updatedArtifact.addedByEmail;
+        console.log("Received updated data:", updatedArtifact);
 
         const filter = { _id: new ObjectId(id) };
         const updateDoc = { $set: updatedArtifact };
 
         const result = await userAddedArtifacts.updateOne(filter, updateDoc);
 
-        if (result.modifiedCount === 1) {
-          res.status(200).send({ message: "Artifact updated successfully" });
-        } else {
-          res
-            .status(404)
-            .send({ error: "Artifact not found or no changes made" });
+        if (result.matchedCount === 0) {
+          return res.status(404).send({ error: "Artifact not found" });
         }
+
+        res.status(200).send({ message: "Artifact updated successfully" });
       } catch (err) {
         console.error("Error updating artifact:", err);
         res.status(500).send({ error: "Failed to update artifact" });
+      }
+    });
+
+    // handle delete
+
+    app.delete("/user-added-artifacts/:id", async (req, res) => {
+      try {
+        const { id } = req.params; // Get the artifact ID from the request URL
+        const result = await userAddedArtifacts.deleteOne({
+          _id: new ObjectId(id),
+        });
+
+        if (result.deletedCount === 0) {
+          return res.status(404).send({ error: "Artifact not found" });
+        }
+
+        res.status(200).send({ message: "Artifact deleted successfully" });
+      } catch (err) {
+        console.error("Error deleting artifact:", err);
+        res.status(500).send({ error: "Failed to delete artifact" });
       }
     });
 
