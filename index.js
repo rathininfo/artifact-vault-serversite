@@ -126,6 +126,21 @@ async function run() {
       }
     });
 
+    app.get("/artifacts", async (req, res) => {
+      const { search } = req.query; // Get the 'search' query parameter
+      try {
+        const filter = search
+          ? { artifactName: { $regex: search, $options: "i" } } // Case-insensitive search
+          : {};
+
+        const artifacts = await ArtifactCollection.find(filter).toArray();
+        res.status(200).json(artifacts);
+      } catch (error) {
+        console.error("Error fetching artifacts:", error);
+        res.status(500).json({ error: "Failed to fetch artifacts" });
+      }
+    });
+
     app.get("/user-likes/:userId", async (req, res) => {
       try {
         const { userId } = req.params;
@@ -178,7 +193,7 @@ async function run() {
     });
 
     // Fetch All Artifacts
-    app.get("/artifacts_collection", varifyToken, async (req, res) => {
+    app.get("/artifacts_collection", async (req, res) => {
       try {
         const result = await artifactCollections.find().toArray();
         res.status(200).send(result);
