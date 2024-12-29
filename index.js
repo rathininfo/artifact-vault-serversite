@@ -20,6 +20,22 @@ app.use(
 );
 app.use(cookieParser());
 
+const varifyToken = (req, res, next) => {
+  const token = req.cookies?.token;
+  console.log("token inside the verify token", token);
+  if (!token) {
+    return res.status(401).send({ message: "unauthroized access" });
+  }
+  //verify the token
+  jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, (err, decoded) => {
+    if (err) {
+      return res.status(401).send({ message: "unauthorized access" });
+    }
+    req.user = decoded;
+    next();
+  });
+};
+
 // MongoDB Connection URI
 const uri = `mongodb+srv://${process.env.USER_NAME}:${process.env.PASSWORD}@cluster1.mynmq.mongodb.net/?retryWrites=true&w=majority`;
 
@@ -162,7 +178,7 @@ async function run() {
     });
 
     // Fetch All Artifacts
-    app.get("/artifacts_collection", async (req, res) => {
+    app.get("/artifacts_collection", varifyToken, async (req, res) => {
       try {
         const result = await artifactCollections.find().toArray();
         res.status(200).send(result);
@@ -202,10 +218,16 @@ async function run() {
     });
 
     // Fetch Artifacts Added by User (by email)
-    app.get("/added_artifacts_collection", async (req, res) => {
+    app.get("/added_artifacts_collection", varifyToken, async (req, res) => {
       try {
         const email = req.query.email;
         const query = { addedByEmail: email };
+
+        console.log(req.cookies?.token);
+        if (req.user.email !== req.query.email) {
+          return res.status(403).send({ message: "forbidden access" });
+        }
+
         const result = await userAddedArtifacts.find(query).toArray();
 
         if (result.length > 0) {
