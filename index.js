@@ -14,7 +14,11 @@ const port = process.env.PORT || 5000;
 app.use(express.json());
 app.use(
   cors({
-    origin: ["http://localhost:5173"],
+    origin: [
+      "http://localhost:5173",
+      "https://historical-artifacts-bfa1a.web.app",
+      "https://historical-artifacts-bfa1a.firebaseapp.com",
+    ],
     credentials: true,
   })
 );
@@ -49,7 +53,7 @@ const client = new MongoClient(uri, {
 
 async function run() {
   try {
-    await client.connect();
+    // await client.connect();
     console.log("Connected to MongoDB!");
 
     // Collections
@@ -70,7 +74,8 @@ async function run() {
       res
         .cookie("token", token, {
           httpOnly: true,
-          secure: false,
+          secure: true,
+          sameSite: "none",
         })
         .send({ success: true });
     });
@@ -79,7 +84,7 @@ async function run() {
       res
         .clearCookie("token", {
           httpOnly: true,
-          secure: false,
+          secure: process.env.NODE_ENV === "Production",
         })
         .send({ success: true });
     });
@@ -88,41 +93,25 @@ async function run() {
     app.patch("/artifacts_collection/:id/like", async (req, res) => {
       try {
         const id = req.params.id;
-        const { userId } = req.body;
+        const query = { _id: new ObjectId(id) };
 
-        const artifactQuery = { _id: new ObjectId(id) };
         const update = { $inc: { likeCount: 1 } };
+        const options = { returnDocument: "after" };
 
-        // Update like count in the artifacts collection
-        const artifactUpdateResult = await artifactCollections.updateOne(
-          artifactQuery,
-          update
+        const result = await artifactCollections.findOneAndUpdate(
+          query,
+          update,
+          options
         );
 
-        if (artifactUpdateResult.matchedCount === 0) {
-          return res.status(404).send({ error: "Artifact not found" });
+        if (result) {
+          res.status(200).send({ likeCount: result.likeCount });
+        } else {
+          res.status(404).send({ error: "Artifact not found" });
         }
-
-        // Save user's like in a separate collection
-        const likeData = {
-          userId,
-          artifactId: id,
-          likedAt: new Date(),
-        };
-
-        const userLikesCollection = client
-          .db("historical-artifacts")
-          .collection("user_likes");
-        await userLikesCollection.updateOne(
-          { userId, artifactId: id },
-          { $set: likeData },
-          { upsert: true }
-        );
-
-        res.status(200).send({ message: "Artifact liked successfully!" });
       } catch (err) {
-        console.error("Error liking artifact:", err);
-        res.status(500).send({ error: "Failed to like artifact" });
+        console.error("Error updating like count:", err);
+        res.status(500).send({ error: "Failed to update like count" });
       }
     });
 
@@ -133,7 +122,7 @@ async function run() {
           ? { artifactName: { $regex: search, $options: "i" } } // Case-insensitive search
           : {};
 
-        const artifacts = await ArtifactCollection.find(filter).toArray();
+        const artifacts = await artifactCollection.find(filter).toArray();
         res.status(200).json(artifacts);
       } catch (error) {
         console.error("Error fetching artifacts:", error);
@@ -238,7 +227,6 @@ async function run() {
         const email = req.query.email;
         const query = { addedByEmail: email };
 
-        console.log(req.cookies?.token);
         if (req.user.email !== req.query.email) {
           return res.status(403).send({ message: "forbidden access" });
         }
@@ -320,8 +308,8 @@ async function run() {
     });
 
     // Test MongoDB Connection
-    await client.db("admin").command({ ping: 1 });
-    console.log("Pinged MongoDB successfully!");
+    // await client.db("admin").command({ ping: 1 });
+    // console.log("Pinged MongoDB successfully!");
   } catch (err) {
     console.error("Failed to connect to MongoDB", err);
   }
